@@ -1,23 +1,35 @@
-version: "3.8"
-
 services:
   app:
-    build: .
+    build:
+      context: .
+      target: development
     ports:
       - "3000:3000"
-    env_file:
-      - .env.local
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/tweakcn
+      - BETTER_AUTH_SECRET=dev-secret-change-in-production
+      - BASE_URL=http://localhost:3000
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
+      # Mount source code for development hot reload
       - .:/app
       - /app/node_modules
-    command: >
-      sh -c "npx drizzle-kit push && npm run dev"
+      - /app/.next
+    command: ["./scripts/docker-init.sh"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   db:
-    image: postgres:15
-    restart: always
+    image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -26,6 +38,12 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   pgdata:
